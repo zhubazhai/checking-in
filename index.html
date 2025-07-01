@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vue 2 Element UI Excel Template Generator</title>
+    <title>每月考勤</title>
     <!-- 引入 Vue 2 -->
     <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
     <!-- 引入 Element UI -->
@@ -62,7 +62,16 @@
               >
                 {{dayOfDutys[data.day].label}}
               </el-checkbox>
-              {{getData(data)}}{{ data.isSelected ? '✔️' : ''}}
+
+              {{getData(data)}}
+              <el-switch
+                :disabled="!dayOfDutys[data.day].isChecked"
+                v-if="showSwitch(data)"
+                v-model="dayOfDutys[data.day].askForLeave"
+                active-text="半天"
+                inactive-text="全天"
+                @change="doChange($event,data.day)"
+              />
             </span>
           </template>
         </el-calendar>
@@ -109,10 +118,13 @@
         margin: 0;
         cursor: pointer;
       }
+      .half-day {
+      }
       .work-day {
         background-color: #75d20f; /* 默认背景颜色 */
         color: #fff;
       }
+
       .over-time {
         background-color: #1e6dfe; /* 默认背景颜色 */
         color: #fff;
@@ -181,17 +193,6 @@
                 prop: "name",
                 attrs: { size: "mini", placeholder: "请输入姓名" },
               },
-              // {
-              //   title: "考勤日期",
-              //   type: "el-date-picker",
-              //   prop: "overtimeDate",
-              //   attrs: {
-              //     type: "dates",
-              //     size: "mini",
-              //     placeholder: "请输入加班日期",
-              //     "value-format": "yyyy-MM-dd",
-              //   },
-              // },
             ],
             dayOfDutys: {},
           };
@@ -230,22 +231,39 @@
                       isChecked: false,
                       day,
                       label: "",
+                      askForLeave: false,
                     },
                   };
                 }, {});
                 localStorage.setItem(monthKey, JSON.stringify(daysOfMonth));
               }
+
               this.$set(this, "dayOfDutys", daysOfMonth);
             },
             immediate: true,
           },
         },
         methods: {
+          doChange(val, day) {
+            const monthKey = `${this.model.name}_${dayjs(day).format(
+              "YYYY-MM"
+            )}`;
+            localStorage.setItem(monthKey, JSON.stringify(this.dayOfDutys));
+          },
+          showSwitch(data) {
+            if (!chineseDays.isWorkday(data.day)) return false;
+            return (
+              this.dayOfDutys[data.day] && this.dayOfDutys[data.day].isChecked
+            );
+          },
           handleCheckboxChange(val, day) {
             this.dayOfDutys[day].isChecked = val;
             this.dayOfDutys[day].label = chineseDays.isWorkday(day)
               ? "请假"
               : "加班";
+            if (!val) {
+              this.dayOfDutys[day].label = "";
+            }
             const monthKey = `${this.model.name}_${dayjs(day).format(
               "YYYY-MM"
             )}`;
@@ -267,15 +285,25 @@
                 !this.dayOfDutys[day].isChecked && chineseDays.isWorkday(day),
               "over-time":
                 this.dayOfDutys[day].isChecked && !chineseDays.isWorkday(day),
+              "half-day":
+                chineseDays.isWorkday(day) && this.dayOfDutys[day].askForLeave,
             };
           },
           async exportExcelTemplate() {
             const curMonth = this.model.month;
             // 创建一个新的工作簿
             const workbook = new ExcelJS.Workbook();
-            const file = await readFile("");
+            const tplArrayBuffer = await fetch(
+              "https://zhubazhai.github.io/KaoQing/attendanceTemplate.xlsx"
+            ).then((response) => {
+              if (!response.ok) {
+                throw new Error("Network response was not ok");
+              }
+              return response.arrayBuffer(); // 指定返回类型为 ArrayBuffer
+            });
+            console.log(tplArrayBuffer,'tplArrayBuffer');
 
-            const tplArrayBuffer = await readFileToArrayBuffer(file);
+            // const tplArrayBuffer = await readFileToArrayBuffer(file);
 
             await workbook.xlsx.load(tplArrayBuffer);
             const worksheet = workbook.worksheets[0]; // 取第一个工作表
@@ -294,20 +322,33 @@
             // 修改整行内容
             const monthArray = new Array(31).fill("").map((_, index) => {
               if (index < dayjs(curMonth).daysInMonth()) {
-                const date = Object.values(this.dayOfDutys)[index];
+                let date = Object.values(this.dayOfDutys)[index];
 
                 const isWorkday = chineseDays.isWorkday(date.day)
                   ? !date.isChecked
                   : date.isChecked;
 
+                let fullDay = isWorkday ? 1 : "";
+
+                let halfDay = "";
+                if (
+                  chineseDays.isWorkday(date.day) &&
+                  date.isChecked &&
+                  date.askForLeave
+                ) {
+                  fullDay = 0.5;
+                  halfDay = 1;
+                  date.label = "请假半天";
+                }
+                console.log(date.askForLeave, "date.day", fullDay, halfDay);
+
                 return [
                   date.day,
-                  isWorkday ? `${this.model.workRole}与技术支持` : "",
-                  isWorkday ? `Y` : "",
-                  isWorkday ? 1 : "",
-                  "",
-                  isWorkday ? `Y` : "",
-                  date.label,
+                  !!fullDay ? `${this.model.workRole}与技术支持` : "",
+                  !!fullDay ? `Y` : "",
+                  fullDay,
+                  halfDay,
+                  !!fullDay ? `Y` : "",
                   date.label,
                 ];
               }
