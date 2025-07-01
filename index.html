@@ -293,15 +293,20 @@
             const curMonth = this.model.month;
             // 创建一个新的工作簿
             const workbook = new ExcelJS.Workbook();
-            const tplArrayBuffer = await fetch(
-              "https://zhubazhai.github.io/KaoQing/attendanceTemplate.xlsx"
-            ).then((response) => {
-              if (!response.ok) {
-                throw new Error("Network response was not ok");
-              }
-              return response.arrayBuffer(); // 指定返回类型为 ArrayBuffer
-            });
-            console.log(tplArrayBuffer,'tplArrayBuffer');
+            const [err, tplArrayBuffer] = await fetch(
+              "https://zhubazhai.github.io/checking-in/attendanceTemplate.xlsx"
+            )
+              .then((response) => {
+                if (!response.ok) {
+                  throw new Error("Network response was not ok");
+                }
+                return [null, response.arrayBuffer()]; // 指定返回类型为 ArrayBuffer
+              })
+              .catch((error) => [error, null]);
+            if (err) {
+              this.$message.error(err);
+              return;
+            }
 
             // const tplArrayBuffer = await readFileToArrayBuffer(file);
 
